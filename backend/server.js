@@ -1,5 +1,5 @@
 import express from "express";
-// import noteRoutes from "./routes/notesRoutes.js";
+import photoRoutes from "./routes/photosRoutes.js";
 // import folderRoutes from "./routes/foldersRoutes.js";
 import { connectDB } from "./src/config/db.js";
 import dotenv from "dotenv";
@@ -11,12 +11,8 @@ const PORT = process.env.PORT || 3000;
 connectDB();
 
 app.use(express.json());
-// app.use("/api/notes", noteRoutes);
+app.use("/api/photos", photoRoutes);
 // app.use("/api/folders", folderRoutes);
-
-app.get("/api/notes", (req, res) => {
-  res.json({ message: "Hello, World!" });
-});
 
 
 app.listen(PORT, () => {
