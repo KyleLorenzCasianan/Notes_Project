@@ -29,7 +29,9 @@ const PhotoSchema = new mongoose.Schema(
         width: Number,
         height: Number,
         format: String,
-        size: Number
+        size: Number,
+        deletedAt: Date,
+        purgeAt: Date
     },
     { timestamps: true }
 );

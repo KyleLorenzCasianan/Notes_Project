@@ -1,9 +1,10 @@
 import Photo from "../models/photos.js";
+import Folder from "../models/folders.js";
 import { getCloudinary } from "../config/cloudinary.js";
 
 export const getPhotos = async (req, res) => {
     try {
-        const photos = await Photo.find({ userId: req.user._id }).sort({ createdAt: -1 });
+        const photos = await Photo.find({ userId: req.user._id, deletedAt: null }).sort({ createdAt: -1 });
         res.json(photos);
     } catch (error) {
         console.error("Error fetching photos:", error);
@@ -17,6 +18,10 @@ export const createPhoto = async (req, res) => {
 
         if (!title || !imageUrl || !publicId) {
             return res.status(400).json({ message: "Title, image URL, and public ID are required" });
+        }
+
+        if (folderId && !(await Folder.exists({ _id: folderId, userId: req.user._id }))) {
+            return res.status(400).json({ message: "Folder not found" });
         }
 
         const photo = await Photo.create({
@@ -54,9 +59,21 @@ export const getPhotoById = async (req, res) => {
 export const updatePhoto = async (req, res) => {
     try {
         const { title, folderId } = req.body;
+        if (folderId && !(await Folder.exists({ _id: folderId, userId: req.user._id }))) {
+            return res.status(400).json({ message: "Folder not found" });
+        }
+        const updates = {};
+        if (title !== undefined) {
+            if (!title.trim()) {
+                return res.status(400).json({ message: "Photo name is required" });
+            }
+            updates.title = title.trim();
+        }
+        if (folderId !== undefined) updates.folderId = folderId || null;
+
         const photo = await Photo.findOneAndUpdate(
             { _id: req.params.id, userId: req.user._id },
-            { title, folderId },
+            updates,
             { new: true, runValidators: true }
         );
 
@@ -72,13 +89,15 @@ export const updatePhoto = async (req, res) => {
 
 export const deletePhoto = async (req, res) => {
     try {
-        const photo = await Photo.findOneAndDelete({ _id: req.params.id, userId: req.user._id });
+        const photo = await Photo.findOneAndUpdate(
+            { _id: req.params.id, userId: req.user._id, deletedAt: null },
+            { deletedAt: new Date(), purgeAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) },
+            { new: true }
+        );
         if (!photo) {
             return res.status(404).json({ message: "Photo not found" });
         }
-
-        await getCloudinary().uploader.destroy(photo.publicId);
-        res.json({ message: "Photo deleted successfully" });
+        res.json({ message: "Photo moved to trash" });
     } catch (error) {
         console.error("Error deleting photo:", error);
         res.status(500).json({ message: "Server error" });

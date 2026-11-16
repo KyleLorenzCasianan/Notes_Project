@@ -15,7 +15,7 @@ const AppLayout = ({ children, dataTheme = "retro", search = "", setSearch = () 
 
   return <main data-theme={dataTheme} className="flex min-h-screen bg-base-100 text-base-content">
     <aside className="hidden w-56 shrink-0 flex-col border-r border-base-300 bg-base-200 p-6 sm:flex">
-      <NavLink className="text-lg font-bold tracking-tight" to="/">Pixora</NavLink>
+      <NavLink className="text-lg font-bold tracking-tight" to="/">PixStash</NavLink>
       <nav className="mt-12 grid gap-1">
         {navigation.map((item) => (
           <NavLink className={({ isActive }) => `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm ${isActive ? "bg-primary text-primary-content" : "text-base-content/60 hover:bg-base-300 hover:text-base-content"}`} end={item.path === "/"} key={item.path} to={item.path}>

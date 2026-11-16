@@ -41,7 +41,7 @@ const LoginPage = () => {
         <main data-theme="retro" className="flex min-h-screen items-center justify-center bg-base-200 px-5">
             <section className="w-full max-w-md rounded-box bg-base-100 p-8 shadow-xl sm:p-10">
                 <div className="mb-8 text-center">
-                    <p className="text-xl font-bold tracking-tight">Pixora</p>
+                    <p className="text-xl font-bold tracking-tight">PixStash</p>
                     <h1 className="mt-8 text-3xl font-semibold tracking-tight">
                         {isRegistering ? "Create your account" : "Welcome back"}
                     </h1>

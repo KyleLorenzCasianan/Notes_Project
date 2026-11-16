@@ -1,5 +1,11 @@
 import express from "express";
 import photoRoutes from "./routes/photosRoutes.js";
+import folderRoutes from "./routes/foldersRoutes.js";
+import usersRoutes from "./routes/usersRoutes.js";
+import connectionsRoutes from "./routes/connectionsRoutes.js";
+import sharesRoutes from "./routes/sharesRoutes.js";
+import notificationsRoutes from "./routes/notificationsRoutes.js";
+import trashRoutes from "./routes/trashRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import { requireAuth } from "./middleware/requireAuth.js";
 import { connectDB } from "./src/config/db.js";
@@ -25,6 +31,12 @@ app.use((req, res, next) => {
 });
 app.use("/api/auth", authRoutes);
 app.use("/api/photos", requireAuth, photoRoutes);
+app.use("/api/folders", requireAuth, folderRoutes);
+app.use("/api/users", requireAuth, usersRoutes);
+app.use("/api/connections", requireAuth, connectionsRoutes);
+app.use("/api/shares", requireAuth, sharesRoutes);
+app.use("/api/notifications", requireAuth, notificationsRoutes);
+app.use("/api/trash", requireAuth, trashRoutes);
 
 
 app.listen(PORT, () => {

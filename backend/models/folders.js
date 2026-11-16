@@ -10,7 +10,8 @@ const folderSchema = new mongoose.Schema(
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
             required: true
-        }
+        },
+        deletedAt: Date
     },
     {timestamps: true}
 );
