@@ -88,3 +88,13 @@ export const deleteConnection = async (req, res) => {
     if (!connection) return res.status(404).json({ message: "Connection not found" });
     return res.json({ message: "Connection removed" });
 };
+
+export const cancelConnection = async (req, res) => {
+    const connection = await Connection.findOneAndDelete({
+        _id: req.params.id,
+        requesterId: req.user._id,
+        status: "pending"
+    });
+    if (!connection) return res.status(404).json({ message: "Pending connection request not found" });
+    return res.json({ message: "Connection request cancelled" });
+};

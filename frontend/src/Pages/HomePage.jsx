@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import AppLayout from "../components/AppLayout";
+import FolderGrid from "../components/home/FolderGrid";
+import HomeDialogs from "../components/home/HomeDialogs";
+import PhotoGrid from "../components/home/PhotoGrid";
+import SelectionToolbar from "../components/home/SelectionToolbar";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
 
@@ -17,10 +21,12 @@ const request = async (path, options = {}) => {
 
 const HomePage = () => {
   const fileInput = useRef(null);
+  const contentsRef = useRef(null);
   const [photos, setPhotos] = useState([]);
   const [folders, setFolders] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
   const [activeFolder, setActiveFolder] = useState("all");
+  const [search, setSearch] = useState("");
   const [uploading, setUploading] = useState(false);
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [folderName, setFolderName] = useState("");
@@ -31,6 +37,12 @@ const HomePage = () => {
   const [shareTarget, setShareTarget] = useState(null);
   const [shareQuery, setShareQuery] = useState("");
   const [shareResults, setShareResults] = useState([]);
+  const [viewerPhoto, setViewerPhoto] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteSaving, setDeleteSaving] = useState(false);
+  const [renameTarget, setRenameTarget] = useState(null);
+  const [renameName, setRenameName] = useState("");
+  const [renameSaving, setRenameSaving] = useState(false);
 
   const loadLibrary = async () => {
     const [photoData, folderData] = await Promise.all([request("/photos"), request("/folders")]);
@@ -65,34 +77,74 @@ const HomePage = () => {
     }
   };
 
-  const renameSelected = async () => {
-    const photo = photos.find((item) => item._id === selectedIds[0]);
-    const title = window.prompt("New photo name", photo?.title);
-    if (!photo || !title?.trim()) return;
+  const openRenameDialog = (type, item) => {
+    setRenameTarget({ type, item });
+    setRenameName(type === "photo" ? item.title : item.folderName);
+  };
 
+  const confirmRename = async (event) => {
+    event.preventDefault();
+    if (!renameTarget || !renameName.trim()) return;
+    setRenameSaving(true);
     try {
-      const updatedPhoto = await request(`/photos/${photo._id}`, {
-        method: "PUT",
-        body: JSON.stringify({ title }),
-      });
-      setPhotos((current) => current.map((item) => item._id === updatedPhoto._id ? updatedPhoto : item));
-      setSelectedIds([]);
-      toast.success("Photo renamed");
+      if (renameTarget.type === "photo") {
+        const updatedPhoto = await request(`/photos/${renameTarget.item._id}`, {
+          method: "PUT",
+          body: JSON.stringify({ title: renameName }),
+        });
+        setPhotos((current) => current.map((item) => item._id === updatedPhoto._id ? updatedPhoto : item));
+        toast.success("Photo renamed");
+      } else {
+        const updatedFolder = await request(`/folders/${renameTarget.item._id}`, {
+          method: "PUT",
+          body: JSON.stringify({ folderName: renameName }),
+        });
+        setFolders((current) => current.map((item) => item._id === updatedFolder._id ? updatedFolder : item));
+        toast.success("Folder renamed");
+      }
+      setRenameTarget(null);
     } catch (error) {
       toast.error(error.message);
+    } finally {
+      setRenameSaving(false);
     }
   };
 
-  const deleteSelected = async () => {
-    if (!selectedIds.length || !window.confirm(`Delete ${selectedIds.length} photo${selectedIds.length === 1 ? "" : "s"}?`)) return;
+  const deleteSelected = () => {
+    if (!selectedIds.length) return;
+    setDeleteTarget({ type: "photos", ids: selectedIds });
+  };
 
+  const deletePhoto = (photo) => {
+    setDeleteTarget({ type: "photo", photo });
+  };
+
+  const deleteFolder = (folder) => {
+    setDeleteTarget({ type: "folder", folder });
+  };
+
+  const confirmDeletion = async () => {
+    if (!deleteTarget || deleteSaving) return;
+    setDeleteSaving(true);
     try {
-      await Promise.all(selectedIds.map((id) => request(`/photos/${id}`, { method: "DELETE" })));
-      setPhotos((current) => current.filter((photo) => !selectedIds.includes(photo._id)));
-      setSelectedIds([]);
-      toast.success("Photo deleted");
+      if (deleteTarget.type === "folder") {
+        await request(`/folders/${deleteTarget.folder._id}`, { method: "DELETE" });
+        setFolders((current) => current.filter((item) => item._id !== deleteTarget.folder._id));
+        setPhotos((current) => current.map((photo) => photo.folderId?._id === deleteTarget.folder._id || photo.folderId === deleteTarget.folder._id ? { ...photo, folderId: null } : photo));
+        if (activeFolder === deleteTarget.folder._id) setActiveFolder("all");
+        toast.success("Folder deleted");
+      } else {
+        const ids = deleteTarget.type === "photo" ? [deleteTarget.photo._id] : deleteTarget.ids;
+        await Promise.all(ids.map((id) => request(`/photos/${id}`, { method: "DELETE" })));
+        setPhotos((current) => current.filter((photo) => !ids.includes(photo._id)));
+        setSelectedIds([]);
+        toast.success("Photo deleted");
+      }
+      setDeleteTarget(null);
     } catch (error) {
       toast.error(error.message);
+    } finally {
+      setDeleteSaving(false);
     }
   };
 
@@ -161,7 +213,8 @@ const HomePage = () => {
     setUploading(true);
     try {
       const uploadedPhotos = [];
-      for (const file of pendingFiles) {
+      const filesToUpload = pendingFiles;
+      for (const [index, file] of filesToUpload.entries()) {
         const signature = await request("/photos/upload-signature");
         const formData = new FormData();
         formData.append("file", file);
@@ -191,9 +244,10 @@ const HomePage = () => {
           }),
         });
         uploadedPhotos.push(photo);
+        setPendingFiles(filesToUpload.slice(index + 1));
       }
 
-      setPhotos((current) => [...uploadedPhotos.reverse(), ...current]);
+      setPhotos((current) => [...[...uploadedPhotos].reverse(), ...current]);
       setPendingFiles([]);
       setUploadFolderId("");
       setUploadDialogOpen(false);
@@ -205,14 +259,23 @@ const HomePage = () => {
     }
   };
 
-  const visiblePhotos = activeFolder === "all"
-    ? photos
-    : photos.filter((photo) => activeFolder === "unfiled"
-      ? !photo.folderId
-      : photo.folderId === activeFolder || photo.folderId?._id === activeFolder);
+  const normalizedSearch = search.trim().toLowerCase();
+  const visiblePhotos = photos.filter((photo) => {
+    const inFolder = activeFolder === "all"
+      ? true
+      : activeFolder === "unfiled"
+        ? !photo.folderId
+        : photo.folderId === activeFolder || photo.folderId?._id === activeFolder;
+    return inFolder && photo.title.toLowerCase().includes(normalizedSearch);
+  });
+
+  const openFolder = (folderId) => {
+    setActiveFolder(folderId);
+    window.setTimeout(() => contentsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  };
 
   return (
-    <AppLayout>
+    <AppLayout search={search} setSearch={setSearch}>
       <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-base-content/50">Your library</p>
@@ -227,119 +290,73 @@ const HomePage = () => {
         </div>
       </div>
 
-      <div className="mt-10 flex flex-wrap items-center gap-2">
-        <button className={`btn btn-sm ${activeFolder === "all" ? "btn-primary" : "btn-ghost"}`} onClick={() => setActiveFolder("all")} type="button">All photos</button>
-        <button className={`btn btn-sm ${activeFolder === "unfiled" ? "btn-primary" : "btn-ghost"}`} onClick={() => setActiveFolder("unfiled")} type="button">Unfiled</button>
-        {folders.map((folder) => (
-          <button className={`btn btn-sm ${activeFolder === folder._id ? "btn-primary" : "btn-ghost"}`} key={folder._id} onClick={() => setActiveFolder(folder._id)} type="button">
-            {folder.folderName}
-          </button>
-        ))}
-        {activeFolder !== "all" && activeFolder !== "unfiled" && (
-          <button className="btn btn-outline btn-sm" onClick={() => openShareDialog({ resourceType: "folder", resourceId: activeFolder })} type="button">Share folder</button>
-        )}
+      <div className="mt-10">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-semibold">Folders</h2>
+            <p className="mt-1 text-sm text-base-content/60">Tap a folder to view the photos inside.</p>
+          </div>
+          {activeFolder !== "all" && activeFolder !== "unfiled" && (
+            <button className="btn btn-outline btn-sm" onClick={() => openShareDialog({ resourceType: "folder", resourceId: activeFolder })} type="button">Share folder</button>
+          )}
+        </div>
+        <FolderGrid
+          activeFolder={activeFolder}
+          folders={folders}
+          onDelete={deleteFolder}
+          onOpenFolder={openFolder}
+          onRename={(folder) => openRenameDialog("folder", folder)}
+          photos={photos}
+        />
       </div>
 
-      {selectedIds.length > 0 && (
-        <div className="alert mt-6 flex flex-wrap gap-2">
-          <span className="mr-auto text-sm font-medium">{selectedIds.length} selected</span>
-          {selectedIds.length === 1 && <button className="btn btn-sm" onClick={renameSelected} type="button">Rename</button>}
-          {selectedIds.length === 1 && <button className="btn btn-sm" onClick={() => openShareDialog({ resourceType: "photo", resourceId: selectedIds[0] })} type="button">Share</button>}
-          <select className="select select-sm" defaultValue="" onChange={moveSelected}>
-            <option disabled value="">Move to...</option>
-            <option value="unfiled">Unfiled</option>
-            {folders.map((folder) => <option key={folder._id} value={folder._id}>{folder.folderName}</option>)}
-          </select>
-          <button className="btn btn-error btn-sm" onClick={deleteSelected} type="button">Delete</button>
-        </div>
-      )}
+      <SelectionToolbar folders={folders} onDelete={deleteSelected} onMove={moveSelected} selectedCount={selectedIds.length} />
+      <PhotoGrid
+        contentsRef={contentsRef}
+        onDelete={deletePhoto}
+        onOpen={setViewerPhoto}
+        onRename={(photo) => openRenameDialog("photo", photo)}
+        onShare={(photo) => openShareDialog({ resourceType: "photo", resourceId: photo._id })}
+        onToggleSelection={toggleSelection}
+        photos={visiblePhotos}
+        selectedIds={selectedIds}
+      />
 
-      {visiblePhotos.length ? (
-        <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-3">
-          {visiblePhotos.map((photo) => (
-            <article className="group relative" key={photo._id}>
-              <label className="absolute left-3 top-3 z-10 cursor-pointer">
-                <input checked={selectedIds.includes(photo._id)} className="checkbox checkbox-primary checkbox-sm bg-base-100/80" onChange={() => toggleSelection(photo._id)} type="checkbox" />
-              </label>
-              <img alt={photo.title} className="aspect-square w-full rounded-box object-cover" src={photo.imageUrl} />
-              <p className="mt-2 truncate text-sm font-medium">{photo.title}</p>
-            </article>
-          ))}
-        </div>
-      ) : (
-        <div className="py-32 text-center text-sm text-base-content/60">No photos in this view.</div>
-      )}
-
-      {folderDialogOpen && (
-        <div className="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="new-folder-title">
-          <div className="modal-box">
-            <h2 className="text-xl font-semibold" id="new-folder-title">Create a folder</h2>
-            <p className="mt-1 text-sm text-base-content/60">Give your folder a name to organize your photos.</p>
-            <form className="mt-6" onSubmit={createFolder}>
-              <input
-                autoFocus
-                className="input input-bordered w-full"
-                maxLength={80}
-                onChange={(event) => setFolderName(event.target.value)}
-                placeholder="e.g. Vacation"
-                required
-                type="text"
-                value={folderName}
-              />
-              <div className="modal-action">
-                <button className="btn btn-ghost" onClick={() => { setFolderDialogOpen(false); setFolderName(""); }} type="button">Cancel</button>
-                <button className="btn btn-primary" type="submit">Create folder</button>
-              </div>
-            </form>
-          </div>
-          <button aria-label="Close folder dialog" className="modal-backdrop" onClick={() => { setFolderDialogOpen(false); setFolderName(""); }} type="button">Close</button>
-        </div>
-      )}
-
-      {uploadDialogOpen && pendingFiles.length > 0 && (
-        <div className="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="upload-photo-title">
-          <div className="modal-box">
-            <h2 className="text-xl font-semibold" id="upload-photo-title">Add photo</h2>
-            <p className="mt-1 text-sm text-base-content/60">
-              {pendingFiles.length} photo{pendingFiles.length === 1 ? "" : "s"} selected
-            </p>
-            <div className="mt-4 max-h-32 overflow-y-auto rounded-box bg-base-200 p-3 text-sm">
-              {pendingFiles.map((file) => <p className="truncate" key={`${file.name}-${file.lastModified}`}>{file.name}</p>)}
-            </div>
-            <form className="mt-6" onSubmit={uploadPhoto}>
-              <label className="form-control">
-                <span className="label-text mb-2 text-sm font-medium">Add to folder</span>
-                <select className="select select-bordered w-full" onChange={(event) => setUploadFolderId(event.target.value)} value={uploadFolderId}>
-                  <option value="">Unfiled</option>
-                  {folders.map((folder) => <option key={folder._id} value={folder._id}>{folder.folderName}</option>)}
-                </select>
-              </label>
-              <div className="modal-action">
-                <button className="btn btn-ghost" disabled={uploading} onClick={() => { setPendingFiles([]); setUploadDialogOpen(false); }} type="button">Cancel</button>
-                <button className="btn btn-primary" disabled={uploading} type="submit">
-                  {uploading ? <span className="loading loading-spinner loading-sm" /> : "Upload photo"}
-                </button>
-              </div>
-            </form>
-          </div>
-          <button aria-label="Close upload dialog" className="modal-backdrop" disabled={uploading} onClick={() => { setPendingFiles([]); setUploadDialogOpen(false); }} type="button">Close</button>
-        </div>
-      )}
-
-      {shareDialogOpen && (
-        <div className="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="share-title">
-          <div className="modal-box">
-            <h2 className="text-xl font-semibold" id="share-title">Share {shareTarget?.resourceType}</h2>
-            <p className="mt-1 text-sm text-base-content/60">Search by username or email.</p>
-            <input autoFocus className="input input-bordered mt-5 w-full" onChange={searchShareRecipients} placeholder="Username or email" value={shareQuery} />
-            <div className="mt-3 grid gap-2">
-              {shareResults.map((user) => <div className="flex items-center justify-between rounded-box bg-base-200 p-3" key={user._id}><div><strong className="block text-sm">{user.userName}</strong><span className="text-xs text-base-content/60">{user.email}</span></div><button className="btn btn-primary btn-sm" onClick={() => shareWith(user._id)} type="button">Share</button></div>)}
-            </div>
-            <div className="modal-action"><button className="btn btn-ghost" onClick={() => setShareDialogOpen(false)} type="button">Cancel</button></div>
-          </div>
-          <button aria-label="Close share dialog" className="modal-backdrop" onClick={() => setShareDialogOpen(false)} type="button">Close</button>
-        </div>
-      )}
+      <HomeDialogs
+        deleteSaving={deleteSaving}
+        deleteTarget={deleteTarget}
+        folderDialogOpen={folderDialogOpen}
+        folderName={folderName}
+        folders={folders}
+        onCloseDelete={() => setDeleteTarget(null)}
+        onCloseFolderDialog={() => { setFolderDialogOpen(false); setFolderName(""); }}
+        onCloseRename={() => setRenameTarget(null)}
+        onCloseShare={() => setShareDialogOpen(false)}
+        onCloseViewer={() => setViewerPhoto(null)}
+        onCreateFolder={createFolder}
+        onDelete={confirmDeletion}
+        onFolderNameChange={setFolderName}
+        onRename={confirmRename}
+        onRenameNameChange={setRenameName}
+        onShare={(recipientId) => shareWith(recipientId)}
+        onSharePhoto={(photo) => { setViewerPhoto(null); openShareDialog({ resourceType: "photo", resourceId: photo._id }); }}
+        onShareQueryChange={searchShareRecipients}
+        onUpload={uploadPhoto}
+        onUploadFolderChange={setUploadFolderId}
+        onCancelUpload={() => { setPendingFiles([]); setUploadDialogOpen(false); }}
+        pendingFiles={pendingFiles}
+        renameName={renameName}
+        renameSaving={renameSaving}
+        renameTarget={renameTarget}
+        shareDialogOpen={shareDialogOpen}
+        shareQuery={shareQuery}
+        shareResults={shareResults}
+        shareTarget={shareTarget}
+        uploadDialogOpen={uploadDialogOpen}
+        uploadFolderId={uploadFolderId}
+        uploading={uploading}
+        viewerPhoto={viewerPhoto}
+      />
     </AppLayout>
   );
 };
